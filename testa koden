@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Min Webbsida</title>
+</head>
+<body>
+    <h1>Välkommen till min webbsida!</h1>
+    <p>Detta är en enkel webbsida.</p>
+    <button id="myButton">Klicka här</button>
+
+    <script>
+        document.getElementById('myButton').addEventListener('click', function() {
+            alert('Knappen har klickats!');
+        });
+    </script>
+</body>
+</html>
