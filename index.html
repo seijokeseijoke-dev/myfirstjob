@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Störning på sträckan</title>
+<meta name="theme-color" content="#0b3a73">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Barlow+Condensed:wght@600;700&display=swap">
+<style>
+/* Layout: en kolumn, formulär överst, tabell under. Färger hämtade från svenska vägskyltar. */
+:root{
+  --bg:#f3f5f8; --surface:#ffffff; --fg:#14202e; --muted:#5a6878; --line:#d6dde6;
+  --sign:#0b3a73; --sign-fg:#ffffff;            /* blå vägvisningsskylt */
+  --warn:#f5b800; --warn-fg:#2a1f00;            /* gul varningsskylt */
+  --crash:#c8102e; --crash-bg:#fde7ea;
+  --block:#b85c00; --block-bg:#fff0de;
+  --work:#6b5a00;  --work-bg:#fff7cc;
+  --focus:#1f6fd1;
+  --f-ui:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-sign:"Barlow Condensed","Roboto Condensed","Arial Narrow",sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0d141c; --surface:#16202b; --fg:#e8eef5; --muted:#9aa8b8; --line:#2a3644;
+  --sign:#1d5aa6; --sign-fg:#ffffff; --warn:#f5b800; --warn-fg:#2a1f00;
+  --crash:#ff6b7f; --crash-bg:#3a1219; --block:#ffab5c; --block-bg:#3a2410;
+  --work:#ffd84d; --work-bg:#332b06; --focus:#6aa8ff; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0d141c; --surface:#16202b; --fg:#e8eef5; --muted:#9aa8b8; --line:#2a3644;
+  --sign:#1d5aa6; --sign-fg:#ffffff; --warn:#f5b800; --warn-fg:#2a1f00;
+  --crash:#ff6b7f; --crash-bg:#3a1219; --block:#ffab5c; --block-bg:#3a2410;
+  --work:#ffd84d; --work-bg:#332b06; --focus:#6aa8ff; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:16px/1.4 var(--f-ui);-webkit-text-size-adjust:100%}
+header{background:var(--sign);color:var(--sign-fg);
+  padding-top:calc(env(safe-area-inset-top,0px) + 12px);padding-bottom:12px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header h1{margin:0;font:700 1.55rem/1.1 var(--f-sign);letter-spacing:.02em;text-wrap:balance}
+header p{margin:2px 0 0;font-size:.85rem;opacity:.85}
+main{padding-block:14px 32px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  display:grid;gap:14px;max-width:760px;margin:0 auto}
+form{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px;display:grid;gap:12px}
+.route{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end}
+.route .stack{display:grid;gap:10px;min-width:0}
+.swap{width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--bg);color:var(--fg);font-size:1.2rem;cursor:pointer;margin-bottom:22px}
+label{display:grid;gap:4px;font-size:.8rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;min-width:0}
+input,select{font:inherit;font-size:1rem;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;width:100%;min-height:46px;text-transform:none;letter-spacing:0}
+input:focus-visible,select:focus-visible,button:focus-visible,td:focus-visible{outline:3px solid var(--focus);outline-offset:1px}
+.times{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.types{display:flex;flex-wrap:wrap;gap:8px}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:.9rem;cursor:pointer;background:var(--bg);user-select:none}
+.chip input{width:auto;min-height:0;margin:0;accent-color:var(--sign)}
+.go{font:700 1.15rem var(--f-sign);letter-spacing:.04em;text-transform:uppercase;background:var(--warn);color:var(--warn-fg);border:2px solid var(--warn-fg);border-radius:8px;min-height:50px;cursor:pointer}
+.go:disabled{opacity:.6;cursor:wait}
+#status{font-size:.95rem;color:var(--muted);min-height:1.4em}
+#status.err{color:var(--crash);font-weight:700}
+.summary{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline;font-size:.9rem;color:var(--muted)}
+.summary b{color:var(--fg);font-size:1.05rem}
+.summary .note{color:var(--block);font-weight:700}
+.tablewrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:10px;-webkit-overflow-scrolling:touch}
+table{border-collapse:separate;border-spacing:0;font-size:.82rem;min-width:100%}
+th,td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top;white-space:nowrap}
+th{font-weight:700;color:var(--muted);background:var(--surface);font-size:.75rem;text-transform:uppercase;letter-spacing:.05em}
+tr:last-child td{border-bottom:0}
+th:last-child,td:last-child{border-right:0}
+.road{position:sticky;left:0;background:var(--surface);z-index:1}
+td.road{padding:6px}
+.shield{display:inline-block;font:700 1rem/1 var(--f-sign);padding:4px 7px 3px;border-radius:4px;background:var(--sign);color:var(--sign-fg);letter-spacing:.02em}
+.shield.e{background:#00843d;color:#fff}
+td.c{cursor:pointer}
+.cause{display:grid;gap:1px;border-left:4px solid;padding:2px 0 2px 6px;border-radius:2px}
+.cause .t{font-weight:700}
+.cause .h{font-variant-numeric:tabular-nums;color:var(--muted);font-size:.78rem}
+.cause .x{font-size:.7rem;font-weight:700;color:var(--crash)}
+.k-olycka{border-color:var(--crash);background:var(--crash-bg)}
+.k-storning{border-color:var(--block);background:var(--block-bg)}
+.k-vagarbete{border-color:var(--work);background:var(--work-bg)}
+.k-more{border-color:var(--sign);background:var(--bg)}
+td.sel .cause{outline:2px solid var(--focus)}
+#detail .item{display:grid;gap:2px;padding-top:8px;border-top:1px solid var(--line)}
+#detail{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px;display:grid;gap:6px}
+#detail h2{margin:0;font:700 1.25rem/1.15 var(--f-sign)}
+#detail .meta{font-size:.85rem;color:var(--muted);font-variant-numeric:tabular-nums}
+#detail p{margin:0}
+.empty{padding:16px;text-align:center;color:var(--muted)}
+footer{font-size:.75rem;color:var(--muted);text-align:center;padding-bottom:max(16px,env(safe-area-inset-bottom,0px))}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Störning på sträckan</h1>
+  <p>Olyckor, hinder och vägarbeten från Trafikverket</p>
+</header>
+<main>
+  <form id="f" autocomplete="off">
+    <div class="route">
+      <div class="stack">
+        <label for="dep">Avgång (från)<input id="dep" required placeholder="t.ex. Göteborg" enterkeyhint="next"></label>
+        <label for="dst">Destination (till)<input id="dst" required placeholder="t.ex. Uddevalla" enterkeyhint="next"></label>
+      </div>
+      <button type="button" class="swap" id="swap" aria-label="Byt avgång och destination">⇅</button>
+    </div>
+    <div class="times">
+      <label for="t0">Starttid<input id="t0" type="time" required></label>
+      <label for="t1">Ankomsttid<input id="t1" type="time" required></label>
+    </div>
+    <div class="types" role="group" aria-label="Typer av störningar">
+      <label class="chip"><input type="checkbox" id="k-olycka" checked>Olyckor</label>
+      <label class="chip"><input type="checkbox" id="k-storning" checked>Avstängt, kö, hinder</label>
+      <label class="chip"><input type="checkbox" id="k-vagarbete" checked>Vägarbeten</label>
+      <label class="chip"><input type="checkbox" id="numbered" checked>Bara numrerade vägar</label>
+    </div>
+    <label for="sev">Vägarbeten som visas<select id="sev">
+      <option value="5" selected>Mycket stor påverkan</option>
+      <option value="4">Stor påverkan eller mer</option>
+      <option value="0">Alla vägarbeten</option>
+    </select></label>
+    <button class="go" id="go" type="submit">Visa störningar</button>
+    <div id="status" role="status" aria-live="polite"></div>
+  </form>
+
+  <section id="result" hidden>
+    <div class="summary" id="summary"></div>
+    <div class="tablewrap"><table id="tbl"></table></div>
+  </section>
+  <section id="detail" hidden aria-live="polite"></section>
+  <footer>Källa: Trafikverket öppet API · Ortsnamn och rutt: OpenStreetMap (Nominatim, OSRM)<br>Sträckan är snabbaste bilväg mellan orterna. Visar störningar som ligger på rutten, på samma vägnummer. Svarar inte ruttjänsten används en rak korridor på ± 15 km.</footer>
+</main>
+
+<script>
+"use strict";
+const API_KEY = "8c3b3bb214dc43369fcadf7af298643c";
+const API_URL = "https://api.trafikinfo.trafikverket.se/v2/data.json";
+const $ = id => document.getElementById(id);
+
+/* ---------- små hjälpare ---------- */
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch{ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch{} }
+};
+const pad = n => String(n).padStart(2, "0");
+const hm = d => pad(d.getHours()) + ":" + pad(d.getMinutes());
+const sameDay = (a, b) => a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function todayAt(hhmm){ const [h,m] = hhmm.split(":").map(Number); const d = new Date(); d.setHours(h, m, 0, 0); return d; }
+
+/* ---------- geokodning ---------- */
+async function geocode(name){
+  const key = "geo:" + name.trim().toLowerCase();
+  const cached = store.get(key, null);
+  if (cached) return cached;
+  const url = "https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=se&limit=1&accept-language=sv&q=" + encodeURIComponent(name.trim());
+  const r = await fetch(url, { headers: { "Accept": "application/json" } });
+  if (!r.ok) throw new Error("Ortsökningen svarade inte (" + r.status + "). Försök igen om en stund.");
+  const j = await r.json();
+  if (!j.length) throw new Error("Hittade ingen ort som heter \"" + name + "\" i Sverige. Kontrollera stavningen.");
+  const g = { lat: +j[0].lat, lon: +j[0].lon, name: j[0].name || name };
+  store.set(key, g);
+  return g;
+}
+
+/* ---------- korridorgeometri (km i lokal projektion) ---------- */
+function makeCorridor(a, b, bufKm){
+  const lat0 = (a.lat + b.lat) / 2 * Math.PI / 180;
+  const kx = 111.32 * Math.cos(lat0), ky = 110.57;
+  const P = p => ({ x: p.lon * kx, y: p.lat * ky });
+  const A = P(a), B = P(b);
+  const dx = B.x - A.x, dy = B.y - A.y, L2 = dx*dx + dy*dy || 1e-9;
+  const lenKm = Math.sqrt(L2);
+  function measure(lon, lat){
+    const p = P({ lon, lat });
+    let t = ((p.x - A.x) * dx + (p.y - A.y) * dy) / L2;
+    t = Math.max(0, Math.min(1, t));
+    const qx = A.x + t * dx, qy = A.y + t * dy;
+    return { d: Math.hypot(p.x - qx, p.y - qy), t: t * lenKm };
+  }
+  // servern får överlappande rutor längs linjen (snabbt, liten datamängd)
+  const n = Math.max(1, Math.ceil(lenKm / 40));
+  const padKm = bufKm + 3;
+  const dLat = padKm / ky, dLon = padKm / kx;
+  const boxes = [];
+  for (let i = 0; i < n; i++){
+    const t0 = i / n, t1 = (i + 1) / n;
+    const lo1 = a.lon + (b.lon - a.lon) * t0, la1 = a.lat + (b.lat - a.lat) * t0;
+    const lo2 = a.lon + (b.lon - a.lon) * t1, la2 = a.lat + (b.lat - a.lat) * t1;
+    boxes.push([Math.min(lo1, lo2) - dLon, Math.min(la1, la2) - dLat, Math.max(lo1, lo2) + dLon, Math.max(la1, la2) + dLat]);
+  }
+  return { measure, boxes, bufKm, lenKm, mode: "line" };
+}
+
+/* ---------- bilväg via OSRM ---------- */
+async function getRoute(a, b){
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 10000);
+  try {
+    const url = `https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=full&geometries=geojson&steps=true`;
+    const r = await fetch(url, { signal: ctl.signal });
+    if (!r.ok) return null;
+    const j = await r.json();
+    const rt = j && j.code === "Ok" && j.routes && j.routes[0];
+    if (!rt || !rt.geometry || rt.geometry.coordinates.length < 2) return null;
+    // varje delsträcka med sitt vägnummer och gatunamn
+    const steps = [], refKm = new Map();
+    for (const leg of rt.legs || []) for (const s of leg.steps || []){
+      const coords = s.geometry && s.geometry.coordinates;
+      if (!coords || coords.length < 2) continue;
+      const refs = new Set();
+      for (const part of String(s.ref || "").split(";")){
+        const k = normRef(part);
+        if (!k) continue;
+        refs.add(k);
+        refKm.set(k, (refKm.get(k) || 0) + s.distance / 1000);
+      }
+      steps.push({ coords, refs, name: (s.name || "").trim().toLowerCase() });
+    }
+    const via = [...refKm.entries()].filter(([, km]) => km >= 2).map(([k]) => k);
+    return { coords: rt.geometry.coordinates, steps, km: rt.distance / 1000, min: rt.duration / 60, via, hasRefs: refKm.size > 0 };
+  } catch { return null; }
+  finally { clearTimeout(timer); }
+}
+
+// "E 6", "E6", "Väg 162", "O 560", "870.01" -> "E6", "162", "560", "870"
+function normRef(s){
+  let t = String(s || "").trim().toUpperCase().replace(/^VÄG\s*/, "").replace(/\.\d+$/, "");
+  let m;
+  if ((m = t.match(/^E\s*(\d+)$/))) return "E" + m[1];
+  if ((m = t.match(/^[A-ZÅÄÖ]{1,2}\s+(\d+)$/))) return m[1];
+  if ((m = t.match(/^(\d+)$/))) return m[1];
+  return null;
+}
+
+function makeRouteCorridor(route, bufKm){
+  const c = route.coords;
+  const lat0 = c.reduce((s, p) => s + p[1], 0) / c.length * Math.PI / 180;
+  const kx = 111.32 * Math.cos(lat0), ky = 110.57;
+  // delsträckor (steg) med vägnummer; utan steg används hela linjen utan nummer
+  const steps = route.steps && route.steps.length ? route.steps : [{ coords: c, refs: new Set(), name: "" }];
+  const segs = [];
+  let cum = 0;
+  for (const st of steps){
+    const tag = { refs: st.refs, name: st.name };
+    let last = null;
+    st.coords.forEach(([lon, lat], idx) => {
+      const p = { x: lon * kx, y: lat * ky, lon, lat };
+      if (!last) { last = p; return; }
+      const len = Math.hypot(p.x - last.x, p.y - last.y);
+      if (len < 0.1 && idx < st.coords.length - 1) return; // gallra punkter tätare än 100 m
+      segs.push({ A: last, B: p, cum0: cum, len, tag });
+      cum += len;
+      last = p;
+    });
+  }
+  // key = { ref, name }: mät bara mot delsträckor som är samma väg
+  const matches = (tag, key) => key.ref ? tag.refs.has(key.ref) : (!!key.name && tag.name === key.name);
+  function measure(lon, lat, key){
+    const x = lon * kx, y = lat * ky;
+    let best = { d: Infinity, t: 0 };
+    for (const s of segs){
+      if (key && !matches(s.tag, key)) continue;
+      const { A, B } = s;
+      const dx = B.x - A.x, dy = B.y - A.y, L2 = dx * dx + dy * dy;
+      let u = L2 ? ((x - A.x) * dx + (y - A.y) * dy) / L2 : 0;
+      u = Math.max(0, Math.min(1, u));
+      const d = Math.hypot(x - (A.x + u * dx), y - (A.y + u * dy));
+      if (d < best.d) best = { d, t: s.cum0 + u * s.len };
+    }
+    return best;
+  }
+  // servern får rutor längs vägen, ca 25 km per ruta
+  const padKm = bufKm + 1;
+  const dLat = padKm / ky, dLon = padKm / kx;
+  const boxes = [];
+  let box = null, boxStart = 0;
+  const flush = () => { if (box) boxes.push([box[0] - dLon, box[1] - dLat, box[2] + dLon, box[3] + dLat]); box = null; };
+  for (const s of segs){
+    if (!box) { box = [Infinity, Infinity, -Infinity, -Infinity]; boxStart = s.cum0; }
+    for (const p of [s.A, s.B]){ box[0] = Math.min(box[0], p.lon); box[1] = Math.min(box[1], p.lat); box[2] = Math.max(box[2], p.lon); box[3] = Math.max(box[3], p.lat); }
+    if (s.cum0 + s.len - boxStart >= 25) flush();
+  }
+  flush();
+  return { measure, boxes, bufKm, lenKm: route.km, min: route.min, mode: "route", matchRoads: !!route.hasRefs, via: route.via };
+}
+
+function durText(min){
+  const h = Math.floor(min / 60), m = Math.round(min % 60);
+  return h ? `${h} h ${m} min` : `${m} min`;
+}
+
+function coordsOf(dev){
+  const g = dev.Geometry || {};
+  const wkt = [g.Line && g.Line.WGS84, g.Point && g.Point.WGS84, g.WGS84].filter(Boolean).join(" ");
+  const pts = [];
+  const re = /(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/g;
+  let m;
+  while ((m = re.exec(wkt))) pts.push([+m[1], +m[2]]);
+  return pts;
+}
+
+/* ---------- Trafikverket ---------- */
+async function fetchSituations(corr){
+  const within = corr.boxes.map(b =>
+    `<WITHIN name="Deviation.Geometry.Point.WGS84" shape="box" value="${b[0].toFixed(5)} ${b[1].toFixed(5)}, ${b[2].toFixed(5)} ${b[3].toFixed(5)}"/>`).join("");
+  const body = `<REQUEST><LOGIN authenticationkey="${API_KEY}"/>` +
+    `<QUERY objecttype="Situation" namespace="road.trafficinfo" schemaversion="1.6">` +
+    `<FILTER><AND><EQ name="Deleted" value="false"/>` +
+    (corr.boxes.length > 1 ? `<OR>${within}</OR>` : within) +
+    `</AND></FILTER></QUERY></REQUEST>`;
+  const r = await fetch(API_URL, { method: "POST", headers: { "Content-Type": "text/xml" }, body });
+  let j = null;
+  try { j = await r.json(); } catch {}
+  const res = j && j.RESPONSE && j.RESPONSE.RESULT && j.RESPONSE.RESULT[0];
+  if (!r.ok || !res || res.ERROR) {
+    const msg = res && res.ERROR ? res.ERROR.MESSAGE : ("HTTP " + r.status);
+    throw new Error("Trafikverket svarade med fel: " + msg);
+  }
+  return res.Situation || [];
+}
+
+/* ---------- klassning ---------- */
+// Trafikmeddelanden som räknas som större störning. Övriga (körfältsavstängning,
+// hastighets-/viktbegränsning, omkörningsförbud) visas inte som egna orsaker.
+const TM_CODES = [
+  [/olycka/i, "Olycka", "olycka"],
+  [/kö/i, "Kö", "storning"],
+  [/vägen avstängd|avstängd väg/i, "Avstängd", "storning"],
+  [/haveri/i, "Fordonshaveri", "storning"],
+  [/djur/i, "Djur på vägen", "storning"],
+  [/träd/i, "Nedfallet träd", "storning"],
+  [/bärgning/i, "Bärgning", "storning"],
+  [/vägskada/i, "Vägskada", "storning"],
+  [/översvämning|ras|skred/i, "Översvämning/ras", "storning"],
+  [/omledning/i, "Omledning", "storning"],
+  [/signal|fungerar ej/i, "Signalfel", "storning"],
+  [/evenemang/i, "Evenemang", "storning"],
+];
+function classify(d){
+  const type = d.MessageType || "", code = d.MessageCode || "";
+  if (type === "Olycka") return { label: code && code !== "Olycka" ? code : "Olycka", kind: "olycka", rank: 0 };
+  if (type === "Hinder") return { label: code || "Hinder", kind: "storning", rank: 1 };
+  if (type === "Vägarbete") {
+    const lab = code === "Beläggningsarbete" ? "Beläggning" : code === "Sprängningsarbete" ? "Sprängning" : "Vägarbete";
+    return { label: lab, kind: "vagarbete", rank: 3 };
+  }
+  if (type === "Trafikmeddelande" || type === "Viktig trafikinformation") {
+    for (const [re, label, kind] of TM_CODES) if (re.test(code)) return { label, kind, rank: kind === "olycka" ? 0 : 2, tm: true };
+    return null;
+  }
+  return null; // Färjor, restriktioner m.m.
+}
+function roadLabel(d){
+  const no = (d.RoadNumber || "").trim();
+  const name = (d.RoadName || "").trim();
+  const lab = no || name;
+  if (!lab || /unnamed|namnlös|okänd väg/i.test(lab + " " + (d.LocationDescriptor || ""))) return null;
+  return lab;
+}
+// "Vägen avstängd" utan egen orsak = generiskt meddelande
+function isGenericClosure(d){
+  const rest = (d.Message || "").replace(/vägen (är )?(helt )?avstängd\.?/ig, "").replace(/trafikmeddelande/ig, "").trim();
+  return rest.length < 12;
+}
+
+/* ---------- huvudflöde ---------- */
+// samma väg som rutten: störningen ska ligga på vägen (marginal för olika kartunderlag)
+const ROAD_TOL_KM = 0.3;
+// utan vägnummer i rutten: avstånd från vägen
+const ROUTE_BUF_KM = 1;
+const isNumbered = road => /^(E\s?\d+|Väg\s+\d+)/i.test(road);
+function analyse(situations, corr, win, kinds, opt){
+  const out = [];
+  const seen = new Set();
+  let removedGeneric = 0, removedUnnamed = 0, removedDup = 0, removedOther = 0;
+  // rutten har vägnummer: störningen måste ligga nära den del av rutten som är samma väg
+  const matchRoads = !!corr.matchRoads;
+  const roadKey = d => ({ ref: normRef(d.RoadNumber), name: (d.RoadName || "").trim().toLowerCase() });
+  for (const S of situations){
+    const devs = (S.Deviation || []).map(d => ({ d, c: classify(d), road: roadLabel(d) }));
+    const primaryRoads = new Set(devs.filter(x => x.c && !x.c.tm).map(x => x.road));
+    const extras = {}; // slås ihop med orsaken på samma väg
+    for (const x of devs){
+      if (x.c && x.c.tm && primaryRoads.has(x.road)) {
+        (extras[x.road] ||= new Set()).add(x.c.label.toLowerCase());
+        removedGeneric++;
+        x.merged = true;
+      }
+    }
+    for (const x of devs){
+      const d = x.d;
+      if (!x.c || x.merged) continue;
+      if (x.c.tm && x.c.label === "Avstängd" && isGenericClosure(d)) { removedGeneric++; continue; }
+      if (!x.road) { removedUnnamed++; continue; }
+      if (!kinds.has(x.c.kind)) continue;
+      if (opt.numbered && !isNumbered(x.road)) continue;
+      if (x.c.kind === "vagarbete" && (d.SeverityCode || 0) < opt.minSev) continue;
+      // tid: dagens datum och inom intervallet
+      const s = d.StartTime ? new Date(d.StartTime) : null;
+      const e = d.ValidUntilFurtherNotice || !d.EndTime ? null : new Date(d.EndTime);
+      if (s && s > win.end) continue;
+      if (e && e < win.start) continue;
+      // läge: inom korridoren
+      const pts = coordsOf(d);
+      if (!pts.length) continue;
+      let best = { d: Infinity, t: 0 };
+      for (const [lon, lat] of pts){ const m = corr.measure(lon, lat); if (m.d < best.d) best = m; }
+      if (best.d > corr.bufKm) continue;
+      if (matchRoads) {
+        const key = roadKey(d);
+        let bm = { d: Infinity, t: 0 };
+        for (const [lon, lat] of pts){ const m = corr.measure(lon, lat, key); if (m.d < bm.d) bm = m; }
+        if (bm.d > ROAD_TOL_KM) { removedOther++; continue; }
+        best = bm;
+      }
+      // dubletter
+      const key = [x.road, x.c.label, (d.LocationDescriptor || "").toLowerCase(), d.StartTime, d.EndTime].join("|");
+      const key2 = [x.road, (d.Message || "").trim().toLowerCase()].join("|");
+      if (seen.has(d.Id) || seen.has(key) || ((d.Message || "").trim() && seen.has(key2))) { removedDup++; continue; }
+      seen.add(d.Id); seen.add(key); if ((d.Message || "").trim()) seen.add(key2);
+      out.push({ road: x.road, ...x.c, s, e, t: best.t, dist: best.d, d, extra: extras[x.road] ? [...extras[x.road]].filter(v => v !== x.c.label.toLowerCase()) : [] });
+    }
+  }
+  return { items: out, removedGeneric, removedUnnamed, removedDup, removedOther };
+}
+
+function timeText(s, e){
+  const now = new Date();
+  const f = d => sameDay(d, now) ? hm(d) : d.getDate() + "/" + (d.getMonth() + 1);
+  const a = s ? f(s) : "";
+  const b = e ? f(e) : "tills vidare";
+  return a ? a + "–" + b : "–" + b;
+}
+function shieldHtml(road){
+  const isE = /^E\s?\d/i.test(road);
+  const txt = road.replace(/^Väg\s+/i, "");
+  return `<span class="shield${isE ? " e" : ""}">${esc(txt)}</span>`;
+}
+
+const MAX_COLS = 6;
+let current = [];
+let corrMode = "route";
+function render(res, corr, a, b, win){
+  const byRoad = new Map();
+  for (const it of res.items){
+    if (!byRoad.has(it.road)) byRoad.set(it.road, []);
+    byRoad.get(it.road).push(it);
+  }
+  const rows = [...byRoad.entries()].map(([road, list]) => {
+    // olyckor först, sedan störst påverkan, sedan senast startade
+    list.sort((p, q) => p.rank - q.rank || (q.d.SeverityCode || 0) - (p.d.SeverityCode || 0) || (q.s || 0) - (p.s || 0));
+    return { road, list, t: Math.min(...list.map(i => i.t)) };
+  }).sort((p, q) => p.t - q.t);
+  current = rows;
+  const maxC = Math.min(MAX_COLS, Math.max(1, ...rows.map(r => r.list.length)));
+  const tbl = $("tbl");
+  let h = "<thead><tr><th class=\"road\">Väg</th>";
+  for (let i = 1; i <= maxC; i++) h += `<th>Orsak ${i}</th>`;
+  h += "</tr></thead><tbody>";
+  if (!rows.length) {
+    h += `<tr><td class="empty" colspan="${maxC + 1}">Inga olyckor eller större störningar på sträckan ${esc(hm(win.start))}–${esc(hm(win.end))}.</td></tr>`;
+  }
+  rows.forEach((r, ri) => {
+    h += `<tr><td class="road">${shieldHtml(r.road)}</td>`;
+    for (let i = 0; i < maxC; i++){
+      const it = r.list[i];
+      if (!it) { h += "<td></td>"; continue; }
+      if (i === maxC - 1 && r.list.length > maxC) {
+        h += `<td class="c" tabindex="0" data-r="${ri}" data-i="more"><div class="cause k-more"><span class="t">+${r.list.length - maxC + 1} till</span><span class="h">visa alla</span></div></td>`;
+        continue;
+      }
+      h += `<td class="c" tabindex="0" data-r="${ri}" data-i="${i}"><div class="cause k-${it.kind}"><span class="t">${esc(it.label)}</span><span class="h">${esc(timeText(it.s, it.e))}</span>${it.extra.length ? `<span class="x">${esc(it.extra.join(", "))}</span>` : ""}</div></td>`;
+    }
+    h += "</tr>";
+  });
+  tbl.innerHTML = h + "</tbody>";
+  const n = res.items.length;
+  $("summary").innerHTML =
+    `<span><b>${n}</b> ${n === 1 ? "störning" : "störningar"} på <b>${rows.length}</b> ${rows.length === 1 ? "väg" : "vägar"}</span>` +
+    (corr.mode === "route"
+      ? `<span>${esc(a.name)} → ${esc(b.name)} · ${Math.round(corr.lenKm)} km bilväg, ca ${durText(corr.min)} · ${esc(hm(win.start))}–${esc(hm(win.end))}</span>` +
+        (corr.via && corr.via.length ? `<span>Via ${corr.via.map(esc).join(" · ")}</span>` : "")
+      : `<span>${esc(a.name)} → ${esc(b.name)} · ${esc(hm(win.start))}–${esc(hm(win.end))}</span><span class="note">Ruttjänsten svarade inte. Visar rak korridor ± ${corr.bufKm} km (${Math.round(corr.lenKm)} km fågelväg), som kan missa störningar på vägen.</span>`) +
+    `<span>Bortfiltrerat: ${res.removedGeneric} generiska, ${res.removedDup} dubbletter${res.removedUnnamed ? ", " + res.removedUnnamed + " utan vägnamn" : ""}${res.removedOther ? ", " + res.removedOther + " på korsande/parallella vägar" : ""} · hämtat ${hm(new Date())}</span>`;
+  $("result").hidden = false;
+  $("detail").hidden = true;
+}
+
+function showDetail(ri, i){
+  const row = current[ri];
+  if (!row) return;
+  document.querySelectorAll("td.sel").forEach(td => td.classList.remove("sel"));
+  const td = document.querySelector(`td[data-r="${ri}"][data-i="${i}"]`);
+  if (td) td.classList.add("sel");
+  const el = $("detail");
+  if (i === "more") {
+    el.innerHTML = `<h2>${esc(row.road)} · alla ${row.list.length}</h2>` + row.list.map(it =>
+      `<div class="item"><div class="cause k-${it.kind}"><span class="t">${esc(it.label)} <span class="h">${esc(timeText(it.s, it.e))}${it.d.SeverityText ? " · " + esc(it.d.SeverityText) : ""}</span></span></div>` +
+      `<p>${esc(it.d.Message || it.d.Header || "")}</p><p class="meta">${esc(it.d.LocationDescriptor || "")}</p></div>`).join("");
+    el.hidden = false;
+    el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    return;
+  }
+  const it = row.list[i];
+  if (!it) return;
+  const d = it.d;
+  el.innerHTML =
+    `<h2>${esc(it.road)} · ${esc(it.label)}</h2>` +
+    `<div class="meta">${esc(timeText(it.s, it.e))}${d.SeverityText ? " · " + esc(d.SeverityText) : ""}${d.TrafficRestrictionType ? " · " + esc(d.TrafficRestrictionType) : ""}${it.extra.length ? " · " + esc(it.extra.join(", ")) : ""}</div>` +
+    (d.Header ? `<p><b>${esc(d.Header)}</b></p>` : "") +
+    (d.Message ? `<p>${esc(d.Message)}</p>` : "") +
+    (d.LocationDescriptor ? `<p class="meta">${esc(d.LocationDescriptor)}</p>` : "") +
+    `<p class="meta">${it.dist < 0.3 ? "Ligger på" : "Ca " + it.dist.toFixed(1).replace(".", ",") + " km från"} ${corrMode === "route" ? "din rutt" : "raka linjen mellan orterna"} · ${Math.round(it.t)} km från start.</p>`;
+  el.hidden = false;
+  el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+const cellArgs = td => [+td.dataset.r, td.dataset.i === "more" ? "more" : +td.dataset.i];
+$("tbl").addEventListener("click", e => { const td = e.target.closest("td.c"); if (td) showDetail(...cellArgs(td)); });
+$("tbl").addEventListener("keydown", e => { if ((e.key === "Enter" || e.key === " ") && e.target.matches("td.c")) { e.preventDefault(); showDetail(...cellArgs(e.target)); } });
+
+$("swap").addEventListener("click", () => { const a = $("dep").value; $("dep").value = $("dst").value; $("dst").value = a; });
+
+function setStatus(msg, err){ const s = $("status"); s.textContent = msg; s.className = err ? "err" : ""; }
+
+$("f").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const dep = $("dep").value.trim(), dst = $("dst").value.trim();
+  const t0 = $("t0").value, t1 = $("t1").value;
+  if (!dep || !dst || !t0 || !t1) { setStatus("Fyll i alla fyra fälten.", true); return; }
+  const win = { start: todayAt(t0), end: todayAt(t1) };
+  if (win.end <= win.start) { setStatus("Ankomsttiden måste vara senare än starttiden (samma dag).", true); return; }
+  const kinds = new Set(["olycka", "storning", "vagarbete"].filter(k => $("k-" + k).checked));
+  if (!kinds.size) { setStatus("Välj minst en typ av störning.", true); return; }
+  const opt = { numbered: $("numbered").checked, minSev: +$("sev").value };
+  store.set("form", { dep, dst, kinds: [...kinds], ...opt });
+  $("go").disabled = true;
+  try {
+    setStatus("Letar upp orterna…");
+    const [a, b] = await Promise.all([geocode(dep), geocode(dst)]);
+    setStatus("Beräknar bilväg…");
+    const route = await getRoute(a, b);
+    const corr = route ? makeRouteCorridor(route, ROUTE_BUF_KM) : makeCorridor(a, b, 15);
+    corrMode = corr.mode;
+    setStatus("Hämtar trafikinformation från Trafikverket…");
+    const sits = await fetchSituations(corr);
+    const res = analyse(sits, corr, win, kinds, opt);
+    render(res, corr, a, b, win);
+    setStatus("");
+  } catch (e) {
+    setStatus(e.message && !/Failed to fetch|NetworkError|Load failed/i.test(e.message) ? e.message : "Ingen kontakt med servern. Kontrollera internetanslutningen.", true);
+  } finally {
+    $("go").disabled = false;
+  }
+});
+
+/* ---------- startläge ---------- */
+(function init(){
+  const s = store.get("form", null);
+  $("dep").value = s ? s.dep : "Göteborg";
+  $("dst").value = s ? s.dst : "Uddevalla";
+  if (s && s.kinds) ["olycka", "storning", "vagarbete"].forEach(k => $("k-" + k).checked = s.kinds.includes(k));
+  if (s && "numbered" in s) $("numbered").checked = s.numbered;
+  if (s && "minSev" in s) $("sev").value = String(s.minSev);
+  const now = new Date();
+  const later = new Date(now.getTime() + 2 * 3600e3);
+  $("t0").value = hm(now);
+  $("t1").value = sameDay(later, now) ? hm(later) : "23:59";
+})();
+
+if ("serviceWorker" in navigator && location.protocol === "https:") {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
+</script>
+</body>
+</html>
