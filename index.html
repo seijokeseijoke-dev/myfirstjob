@@ -36,6 +36,7 @@
   --crash:#ff6b7f; --crash-bg:#3a1219; --block:#ffab5c; --block-bg:#3a2410;
   --work:#ffd84d; --work-bg:#332b06; --focus:#6aa8ff; color-scheme:dark}
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html,body{margin:0}
 body{background:var(--bg);color:var(--fg);font:16px/1.4 var(--f-ui);-webkit-text-size-adjust:100%}
 header{background:var(--sign);color:var(--sign-fg);
@@ -48,6 +49,7 @@ main{padding-block:14px 32px;padding-left:max(16px,env(safe-area-inset-left,0px)
 form{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px;display:grid;gap:12px}
 .route{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end}
 .route .stack{display:grid;gap:10px;min-width:0}
+.place{display:grid;grid-template-columns:1fr 1fr;gap:8px;min-width:0}
 .swap{width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--bg);color:var(--fg);font-size:1.2rem;cursor:pointer;margin-bottom:22px}
 label{display:grid;gap:4px;font-size:.8rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;min-width:0}
 input,select{font:inherit;font-size:1rem;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;width:100%;min-height:46px;text-transform:none;letter-spacing:0}
@@ -102,8 +104,14 @@ footer{font-size:.75rem;color:var(--muted);text-align:center;padding-bottom:max(
   <form id="f" autocomplete="off">
     <div class="route">
       <div class="stack">
-        <label for="dep">Avgång (från)<input id="dep" required placeholder="t.ex. Göteborg" enterkeyhint="next"></label>
-        <label for="dst">Destination (till)<input id="dst" required placeholder="t.ex. Uddevalla" enterkeyhint="next"></label>
+        <div class="place">
+          <label for="dep">Avgång, stad<input id="dep" required placeholder="t.ex. Göteborg" enterkeyhint="next"></label>
+          <label for="depSt">Gata (valfritt)<input id="depSt" placeholder="t.ex. Sjöbacken 3" enterkeyhint="next"></label>
+        </div>
+        <div class="place">
+          <label for="dst">Destination, stad<input id="dst" required placeholder="t.ex. Uddevalla" enterkeyhint="next"></label>
+          <label for="dstSt">Gata (valfritt)<input id="dstSt" placeholder="t.ex. Kungsgatan" enterkeyhint="next"></label>
+        </div>
       </div>
       <button type="button" class="swap" id="swap" aria-label="Byt avgång och destination">⇅</button>
     </div>
@@ -164,6 +172,39 @@ async function geocode(name){
   const g = { lat: +j[0].lat, lon: +j[0].lon, name: j[0].name || name };
   store.set(key, g);
   return g;
+}
+
+// Gata i en viss stad. Väljer träffen närmast stadens centrum (max 30 km), annars null.
+async function geocodeStreet(street, city){
+  const key = "geoSt:" + street.trim().toLowerCase() + "|" + city.lat.toFixed(3) + "," + city.lon.toFixed(3);
+  const cached = store.get(key, null);
+  if (cached) return cached;
+  const url = "https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=se&limit=5&addressdetails=1&accept-language=sv&q=" +
+    encodeURIComponent(street.trim() + ", " + city.name);
+  const r = await fetch(url, { headers: { "Accept": "application/json" } });
+  if (!r.ok) return null;
+  const j = await r.json();
+  const kx = 111.32 * Math.cos(city.lat * Math.PI / 180), ky = 110.57;
+  let best = null, bestD = Infinity;
+  for (const h of j || []){
+    const d = Math.hypot((+h.lon - city.lon) * kx, (+h.lat - city.lat) * ky);
+    if (d < bestD) { bestD = d; best = h; }
+  }
+  if (!best || bestD > 30) return null;
+  const a = best.address || {};
+  const road = a.road || a.pedestrian || a.square || street.trim();
+  const g = { lat: +best.lat, lon: +best.lon, name: road + (a.house_number ? " " + a.house_number : "") + ", " + city.name };
+  store.set(key, g);
+  return g;
+}
+
+// Stad + valfri gata. Hittas inte gatan används staden, med en notis.
+async function place(cityName, street){
+  const city = await geocode(cityName);
+  if (!street) return { ...city, note: null };
+  const s = await geocodeStreet(street, city);
+  if (s) return { ...s, note: null };
+  return { ...city, note: `Hittade inte gatan "${street}" i ${city.name}. Använder ${city.name} i stället.` };
 }
 
 /* ---------- korridorgeometri (km i lokal projektion) ---------- */
@@ -485,6 +526,7 @@ function render(res, corr, a, b, win){
       ? `<span>${esc(a.name)} → ${esc(b.name)} · ${Math.round(corr.lenKm)} km bilväg, ca ${durText(corr.min)} · ${esc(hm(win.start))}–${esc(hm(win.end))}</span>` +
         (corr.via && corr.via.length ? `<span>Via ${corr.via.map(esc).join(" · ")}</span>` : "")
       : `<span>${esc(a.name)} → ${esc(b.name)} · ${esc(hm(win.start))}–${esc(hm(win.end))}</span><span class="note">Ruttjänsten svarade inte. Visar rak korridor ± ${corr.bufKm} km (${Math.round(corr.lenKm)} km fågelväg), som kan missa störningar på vägen.</span>`) +
+    [a.note, b.note].filter(Boolean).map(n => `<span class="note">${esc(n)}</span>`).join("") +
     `<span>Bortfiltrerat: ${res.removedGeneric} generiska, ${res.removedDup} dubbletter${res.removedUnnamed ? ", " + res.removedUnnamed + " utan vägnamn" : ""}${res.removedOther ? ", " + res.removedOther + " på korsande/parallella vägar" : ""} · hämtat ${hm(new Date())}</span>`;
   $("result").hidden = false;
   $("detail").hidden = true;
@@ -523,25 +565,30 @@ const cellArgs = td => [+td.dataset.r, td.dataset.i === "more" ? "more" : +td.da
 $("tbl").addEventListener("click", e => { const td = e.target.closest("td.c"); if (td) showDetail(...cellArgs(td)); });
 $("tbl").addEventListener("keydown", e => { if ((e.key === "Enter" || e.key === " ") && e.target.matches("td.c")) { e.preventDefault(); showDetail(...cellArgs(e.target)); } });
 
-$("swap").addEventListener("click", () => { const a = $("dep").value; $("dep").value = $("dst").value; $("dst").value = a; });
+$("swap").addEventListener("click", () => {
+  for (const [x, y] of [["dep", "dst"], ["depSt", "dstSt"]]) { const v = $(x).value; $(x).value = $(y).value; $(y).value = v; }
+});
 
 function setStatus(msg, err){ const s = $("status"); s.textContent = msg; s.className = err ? "err" : ""; }
 
 $("f").addEventListener("submit", async ev => {
   ev.preventDefault();
   const dep = $("dep").value.trim(), dst = $("dst").value.trim();
+  const depSt = $("depSt").value.trim(), dstSt = $("dstSt").value.trim();
   const t0 = $("t0").value, t1 = $("t1").value;
-  if (!dep || !dst || !t0 || !t1) { setStatus("Fyll i alla fyra fälten.", true); return; }
+  if (!dep || !dst || !t0 || !t1) { setStatus("Fyll i stad för avgång och destination, samt start- och ankomsttid.", true); return; }
   const win = { start: todayAt(t0), end: todayAt(t1) };
   if (win.end <= win.start) { setStatus("Ankomsttiden måste vara senare än starttiden (samma dag).", true); return; }
   const kinds = new Set(["olycka", "storning", "vagarbete"].filter(k => $("k-" + k).checked));
   if (!kinds.size) { setStatus("Välj minst en typ av störning.", true); return; }
   const opt = { numbered: $("numbered").checked, minSev: +$("sev").value };
-  store.set("form", { dep, dst, kinds: [...kinds], ...opt });
+  store.set("form", { dep, dst, depSt, dstSt, kinds: [...kinds], ...opt });
   $("go").disabled = true;
   try {
     setStatus("Letar upp orterna…");
-    const [a, b] = await Promise.all([geocode(dep), geocode(dst)]);
+    // i tur och ordning: ortsökningen tillåter ett anrop i sekunden
+    const a = await place(dep, depSt);
+    const b = await place(dst, dstSt);
     setStatus("Beräknar bilväg…");
     const route = await getRoute(a, b);
     const corr = route ? makeRouteCorridor(route, ROUTE_BUF_KM) : makeCorridor(a, b, 15);
@@ -563,6 +610,8 @@ $("f").addEventListener("submit", async ev => {
   const s = store.get("form", null);
   $("dep").value = s ? s.dep : "Göteborg";
   $("dst").value = s ? s.dst : "Uddevalla";
+  $("depSt").value = (s && s.depSt) || "";
+  $("dstSt").value = (s && s.dstSt) || "";
   if (s && s.kinds) ["olycka", "storning", "vagarbete"].forEach(k => $("k-" + k).checked = s.kinds.includes(k));
   if (s && "numbered" in s) $("numbered").checked = s.numbered;
   if (s && "minSev" in s) $("sev").value = String(s.minSev);

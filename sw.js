@@ -1,5 +1,5 @@
 // Cachar bara appens egna filer. Trafikdata hämtas alltid färskt från nätet.
-const CACHE = "storning-v3";
+const CACHE = "storning-v4";
 const SHELL = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", e => {
